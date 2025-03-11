@@ -9,9 +9,10 @@ services:
       - "3500:3500"
     volumes:
       - ./music:/app/music:ro  # Read-only mount of music files
-      - ./.env:/app/.env:ro    # Read-only mount of environment file
     environment:
       - RUST_LOG=info
+      - PORT=3500
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3500/health"]
@@ -24,4 +25,4 @@ services:
 
 networks:
   music-net:
-    driver: bridge 
+    driver: bridge
