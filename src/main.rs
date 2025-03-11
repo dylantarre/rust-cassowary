@@ -1,35 +1,30 @@
-mod schema;
-
 use axum::{
-    extract::{Path, State, Query},
-    http::{header, HeaderMap, HeaderValue, StatusCode, Range},
-    response::{IntoResponse, Response, sse::{Event, Sse}},
+    extract::{Path, State},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Router,
     Json,
 };
-use bytes::{Bytes, BytesMut};
 use dotenv::dotenv;
-use futures::{Stream, StreamExt};
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
-    io::{BufReader, Read, Seek, SeekFrom},
+    io::{Read},
     net::SocketAddr,
-    path::{Path as FilePath, PathBuf},
+    path::{PathBuf},
     sync::Arc,
     collections::VecDeque,
 };
 use tokio::{
-    fs::File as TokioFile,
     io::AsyncReadExt,
     sync::Mutex,
+    net::TcpListener,
 };
 use tokio_util::io::ReaderStream;
 use tower_http::cors::CorsLayer;
-use tracing::{info, error, Level};
-use walkdir::WalkDir;
+use tracing::{info, Level};
 
 const CHUNK_SIZE: usize = 1024 * 32; // 32KB chunks
 
@@ -120,7 +115,8 @@ async fn stream_track(
             // Create a limited reader for the range
             let stream = ReaderStream::new(file.take(end - start + 1));
             
-            let mut response = Response::new(axum::body::StreamBody::new(stream));
+            let body = axum::body::Body::from_stream(stream);
+            let mut response = Response::new(body);
             response.headers_mut().insert(
                 header::CONTENT_RANGE,
                 HeaderValue::from_str(&format!("bytes {}-{}/{}", start, end, file_size))
@@ -142,7 +138,8 @@ async fn stream_track(
             // Stream the entire file
             let stream = ReaderStream::new(file);
             
-            let mut response = Response::new(axum::body::StreamBody::new(stream));
+            let body = axum::body::Body::from_stream(stream);
+            let mut response = Response::new(body);
             response.headers_mut().insert(
                 header::CONTENT_TYPE,
                 HeaderValue::from_static("audio/mpeg"),
@@ -228,10 +225,8 @@ async fn main() {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     info!("Music streaming server listening on {}", addr);
     
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    let listener = TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }
 
 async fn prefetch_worker(state: AppState) {

@@ -14,16 +14,16 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-COPY --from=builder /usr/src/app/target/release/rusty-cassowary-server /app/
+COPY --from=builder /usr/src/app/target/release/rusty-cassowary /app/
 COPY --from=builder /usr/src/app/.env /app/
 
 # Create music directory
 RUN mkdir -p /app/music
 
 ENV MUSIC_DIR=/app/music
-EXPOSE 3000
+EXPOSE 3500
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3000/health || exit 1
+    CMD curl -f http://localhost:3500/health || exit 1
 
-CMD ["./rusty-cassowary-server"] 
+CMD ["./rusty-cassowary"] 
