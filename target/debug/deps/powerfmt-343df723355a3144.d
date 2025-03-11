@@ -1,0 +1,11 @@
+/Users/dylantarre/dev/rusty-cassowary/target/debug/deps/libpowerfmt-343df723355a3144.rmeta: /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/lib.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/buf.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/ext.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/smart_display.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/smart_display_impls.rs
+
+/Users/dylantarre/dev/rusty-cassowary/target/debug/deps/libpowerfmt-343df723355a3144.rlib: /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/lib.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/buf.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/ext.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/smart_display.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/smart_display_impls.rs
+
+/Users/dylantarre/dev/rusty-cassowary/target/debug/deps/powerfmt-343df723355a3144.d: /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/lib.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/buf.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/ext.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/smart_display.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/smart_display_impls.rs
+
+/Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/lib.rs:
+/Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/buf.rs:
+/Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/ext.rs:
+/Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/smart_display.rs:
+/Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/powerfmt-0.2.0/src/smart_display_impls.rs:

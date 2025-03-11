@@ -1,0 +1,11 @@
+/Users/dylantarre/dev/rusty-cassowary/target/debug/deps/libsocket2-5ab82e0440e6ac3a.rmeta: /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/lib.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/sockaddr.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/socket.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/sockref.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/sys/unix.rs
+
+/Users/dylantarre/dev/rusty-cassowary/target/debug/deps/libsocket2-5ab82e0440e6ac3a.rlib: /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/lib.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/sockaddr.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/socket.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/sockref.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/sys/unix.rs
+
+/Users/dylantarre/dev/rusty-cassowary/target/debug/deps/socket2-5ab82e0440e6ac3a.d: /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/lib.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/sockaddr.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/socket.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/sockref.rs /Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/sys/unix.rs
+
+/Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/lib.rs:
+/Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/sockaddr.rs:
+/Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/socket.rs:
+/Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/sockref.rs:
+/Users/dylantarre/.cargo/registry/src/index.crates.io-6f17d22bba15001f/socket2-0.5.8/src/sys/unix.rs:

@@ -1,6 +1,40 @@
 # Rusty Cassowary Music Server
 
-A Rust-based music server designed to run in a Linux container.
+A Rust-based music server designed to run in a Linux container with Supabase authentication integration.
+
+## Features
+
+- Streaming MP3 audio files with range request support
+- JWT-based authentication via Supabase
+- Prefetching mechanism for improved playback performance
+- Containerized for Kubernetes/Portainer deployment
+- CORS support for web clients
+
+## Authentication
+
+This server uses Supabase for authentication. It verifies JWT tokens issued by Supabase to authenticate API requests.
+
+### Setting Up Supabase
+
+1. Create a Supabase project at [https://supabase.com](https://supabase.com)
+2. Enable email authentication in your Supabase project settings
+3. Get your JWT secret from Supabase project settings
+4. Set the `SUPABASE_JWT_SECRET` environment variable in your deployment
+
+### Authentication Integration
+
+This service can be integrated with various client applications:
+
+- CLI tools that handle Supabase authentication
+- Mobile applications
+- Web applications
+- Other services that can obtain and use Supabase JWT tokens
+
+Any client that can obtain a valid JWT token from Supabase can authenticate with this server by including the token in the `Authorization` header of API requests:
+
+```
+Authorization: Bearer <your-jwt-token>
+```
 
 ## Deployment Instructions
 
@@ -10,7 +44,7 @@ When deploying to Portainer, follow these steps to avoid common issues:
 
 1. **Environment Variables**: 
    - Set the following environment variables in Portainer:
-     - `SUPABASE_JWT_SECRET`: Your JWT secret for authentication
+     - `SUPABASE_JWT_SECRET`: Your JWT secret for authentication (from Supabase project settings)
      - `PORT`: 3500 (default)
      - `MUSIC_DIR`: /app/music
      - `RUST_LOG`: info
@@ -21,6 +55,13 @@ When deploying to Portainer, follow these steps to avoid common issues:
 
 3. **Network**:
    - Ensure the container has proper network access
+
+## API Endpoints
+
+- `GET /health` - Health check endpoint (public)
+- `GET /tracks/:id` - Stream a track (authenticated)
+- `POST /prefetch` - Prefetch tracks for better performance (authenticated)
+- `GET /user` - Get user information from the JWT token (authenticated)
 
 ## Local Development
 

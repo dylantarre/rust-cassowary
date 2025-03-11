@@ -5,9 +5,9 @@ use axum::{
     routing::{get, post},
     Router,
     Json,
+    middleware,
 };
 use dotenv::dotenv;
-use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
@@ -26,6 +26,11 @@ use tokio_util::io::ReaderStream;
 use tower_http::cors::CorsLayer;
 use tracing::{info, Level};
 
+// Import our auth module
+mod auth;
+use auth::{verify_supabase_token, Claims};
+use auth::middleware::require_auth;
+
 const CHUNK_SIZE: usize = 1024 * 32; // 32KB chunks
 
 #[derive(Clone)]
@@ -36,40 +41,8 @@ struct AppState {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Claims {
-    sub: String,
-    exp: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 struct PrefetchRequest {
     track_ids: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct ErrorResponse {
-    error: String,
-}
-
-async fn verify_token(headers: &HeaderMap, jwt_secret: &str) -> Result<String, StatusCode> {
-    let auth_header = headers
-        .get("Authorization")
-        .ok_or(StatusCode::UNAUTHORIZED)?
-        .to_str()
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
-
-    if !auth_header.starts_with("Bearer ") {
-        return Err(StatusCode::UNAUTHORIZED);
-    }
-
-    let token = &auth_header[7..];
-    let key = DecodingKey::from_secret(jwt_secret.as_bytes());
-    let validation = Validation::default();
-
-    let token_data = decode::<Claims>(token, &key, &validation)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
-
-    Ok(token_data.claims.sub)
 }
 
 async fn stream_track(
@@ -77,7 +50,8 @@ async fn stream_track(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Response, StatusCode> {
-    let _user_id = verify_token(&headers, &state.supabase_jwt_secret).await?;
+    // Get user claims from the request extensions (set by middleware)
+    let _claims = verify_supabase_token(&headers, &state.supabase_jwt_secret).await?;
     
     let file_path = state.music_dir.join(format!("{}.mp3", track_id));
     
@@ -164,7 +138,8 @@ async fn prefetch_tracks(
     headers: HeaderMap,
     Json(request): Json<PrefetchRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let _user_id = verify_token(&headers, &state.supabase_jwt_secret).await?;
+    // Get user claims from the request extensions (set by middleware)
+    let _claims = verify_supabase_token(&headers, &state.supabase_jwt_secret).await?;
     
     // Add tracks to prefetch queue
     let mut queue = state.prefetch_queue.lock().await;
@@ -177,6 +152,29 @@ async fn prefetch_tracks(
 
 async fn health_check() -> impl IntoResponse {
     StatusCode::OK
+}
+
+// New endpoint to get user info from the token
+async fn get_user_info(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let claims = verify_supabase_token(&headers, &state.supabase_jwt_secret).await?;
+    
+    #[derive(Serialize)]
+    struct UserInfo {
+        id: String,
+        email: Option<String>,
+        role: Option<String>,
+    }
+    
+    let user_info = UserInfo {
+        id: claims.sub,
+        email: claims.email,
+        role: claims.role,
+    };
+    
+    Ok(Json(user_info))
 }
 
 #[tokio::main]
@@ -207,10 +205,21 @@ async fn main() {
         .allow_methods(tower_http::cors::Any)
         .allow_headers(tower_http::cors::Any);
 
-    let app = Router::new()
+    // Create a router for public routes
+    let public_routes = Router::new()
+        .route("/health", get(health_check));
+
+    // Create a router for protected routes
+    let protected_routes = Router::new()
         .route("/tracks/:id", get(stream_track))
         .route("/prefetch", post(prefetch_tracks))
-        .route("/health", get(health_check))
+        .route("/user", get(get_user_info))
+        .layer(middleware::from_fn_with_state(state.clone(), require_auth));
+
+    // Combine the routers
+    let app = Router::new()
+        .merge(public_routes)
+        .merge(protected_routes)
         .layer(cors)
         .with_state(state.clone());
 
