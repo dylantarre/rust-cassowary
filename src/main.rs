@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, State},
-    http::{header, HeaderMap, HeaderValue, StatusCode},
-    response::{IntoResponse, Response},
+    http::{header, HeaderMap, HeaderValue, StatusCode, Uri},
+    response::{IntoResponse, Response, Redirect},
     routing::{get, post},
     Router,
     Json,
@@ -44,6 +44,40 @@ struct AppState {
 #[derive(Debug, Serialize, Deserialize)]
 struct PrefetchRequest {
     track_ids: Vec<String>,
+}
+
+// Get a random track and redirect to it
+async fn random_track(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, StatusCode> {
+    // Get user claims from the request extensions (set by middleware)
+    let _claims = verify_supabase_token(&headers, &state.supabase_jwt_secret).await?;
+    
+    // Get all MP3 files from the music directory
+    let mut track_ids = Vec::new();
+    
+    if let Ok(entries) = std::fs::read_dir(&*state.music_dir) {
+        for entry in entries.filter_map(Result::ok) {
+            if let Some(file_name) = entry.file_name().to_str() {
+                if file_name.ends_with(".mp3") {
+                    // Remove the .mp3 extension to get the track ID
+                    if let Some(track_id) = file_name.strip_suffix(".mp3") {
+                        track_ids.push(track_id.to_string());
+                    }
+                }
+            }
+        }
+    }
+    
+    // Choose a random track
+    let mut rng = rand::thread_rng();
+    if let Some(track_id) = track_ids.choose(&mut rng) {
+        // Return a 302 redirect to the track
+        Ok(Redirect::to(&format!("/tracks/{}", track_id)))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
 }
 
 async fn stream_track(
@@ -176,57 +210,6 @@ async fn get_user_info(
     };
     
     Ok(Json(user_info))
-}
-
-// New endpoint to get a random track
-async fn random_track(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<impl IntoResponse, StatusCode> {
-    // Get user claims from the request extensions (set by middleware)
-    let _claims = verify_supabase_token(&headers, &state.supabase_jwt_secret).await?;
-    
-    // Get all mp3 files in the music directory
-    let tracks = get_all_tracks(&state.music_dir)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
-    if tracks.is_empty() {
-        return Err(StatusCode::NOT_FOUND);
-    }
-    
-    // Select a random track
-    let mut rng = rand::thread_rng();
-    let random_track = tracks.choose(&mut rng)
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
-    
-    // Create response with Location header
-    let mut response = Response::builder()
-        .status(StatusCode::SEE_OTHER)
-        .header(header::LOCATION, format!("/tracks/{}", random_track))
-        .body(axum::body::Body::empty())
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
-    Ok(response)
-}
-
-// Helper function to get all track IDs
-fn get_all_tracks(music_dir: &PathBuf) -> Result<Vec<String>, std::io::Error> {
-    let mut tracks = Vec::new();
-    
-    for entry in std::fs::read_dir(music_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        
-        if path.is_file() && path.extension().map_or(false, |ext| ext == "mp3") {
-            if let Some(file_stem) = path.file_stem() {
-                if let Some(track_id) = file_stem.to_str() {
-                    tracks.push(track_id.to_string());
-                }
-            }
-        }
-    }
-    
-    Ok(tracks)
 }
 
 #[tokio::main]

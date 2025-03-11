@@ -9,7 +9,6 @@ A Rust-based music server designed to run in a Linux container with Supabase aut
 - Prefetching mechanism for improved playback performance
 - Containerized for Kubernetes/Portainer deployment
 - CORS support for web clients
-- Compatible with music-cli application
 
 ## Authentication
 
@@ -37,50 +36,6 @@ Any client that can obtain a valid JWT token from Supabase can authenticate with
 Authorization: Bearer <your-jwt-token>
 ```
 
-## API Endpoints
-
-The server provides the following endpoints for integration with the music-cli application:
-
-- `GET /health` - Health check endpoint (public)
-- `GET /random` - Returns a random track ID in the Location header (authenticated)
-- `GET /tracks/:id` - Stream a track (authenticated)
-- `POST /prefetch` - Prefetch tracks for better performance (authenticated)
-- `GET /user` - Get user information from the JWT token (authenticated)
-
-### Request and Response Examples
-
-#### GET /random
-
-Request:
-```
-GET /random
-Authorization: Bearer <your-jwt-token>
-```
-
-Response:
-```
-HTTP/1.1 303 See Other
-Location: /tracks/track123
-```
-
-#### POST /prefetch
-
-Request:
-```
-POST /prefetch
-Authorization: Bearer <your-jwt-token>
-Content-Type: application/json
-
-{
-  "track_ids": ["track1", "track2", "track3"]
-}
-```
-
-Response:
-```
-HTTP/1.1 200 OK
-```
-
 ## Deployment Instructions
 
 ### Portainer Deployment
@@ -100,6 +55,13 @@ When deploying to Portainer, follow these steps to avoid common issues:
 
 3. **Network**:
    - Ensure the container has proper network access
+
+## API Endpoints
+
+- `GET /health` - Health check endpoint (public)
+- `GET /tracks/:id` - Stream a track (authenticated)
+- `POST /prefetch` - Prefetch tracks for better performance (authenticated)
+- `GET /user` - Get user information from the JWT token (authenticated)
 
 ## Local Development
 
