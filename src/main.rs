@@ -25,6 +25,7 @@ use tokio::{
 use tokio_util::io::ReaderStream;
 use tower_http::cors::CorsLayer;
 use tracing::{info, Level};
+use rand::seq::SliceRandom;
 
 // Import our auth module
 mod auth;
@@ -177,6 +178,57 @@ async fn get_user_info(
     Ok(Json(user_info))
 }
 
+// New endpoint to get a random track
+async fn random_track(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, StatusCode> {
+    // Get user claims from the request extensions (set by middleware)
+    let _claims = verify_supabase_token(&headers, &state.supabase_jwt_secret).await?;
+    
+    // Get all mp3 files in the music directory
+    let tracks = get_all_tracks(&state.music_dir)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    if tracks.is_empty() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    
+    // Select a random track
+    let mut rng = rand::thread_rng();
+    let random_track = tracks.choose(&mut rng)
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    // Create response with Location header
+    let mut response = Response::builder()
+        .status(StatusCode::SEE_OTHER)
+        .header(header::LOCATION, format!("/tracks/{}", random_track))
+        .body(axum::body::Body::empty())
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    Ok(response)
+}
+
+// Helper function to get all track IDs
+fn get_all_tracks(music_dir: &PathBuf) -> Result<Vec<String>, std::io::Error> {
+    let mut tracks = Vec::new();
+    
+    for entry in std::fs::read_dir(music_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        
+        if path.is_file() && path.extension().map_or(false, |ext| ext == "mp3") {
+            if let Some(file_stem) = path.file_stem() {
+                if let Some(track_id) = file_stem.to_str() {
+                    tracks.push(track_id.to_string());
+                }
+            }
+        }
+    }
+    
+    Ok(tracks)
+}
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
@@ -212,6 +264,7 @@ async fn main() {
     // Create a router for protected routes
     let protected_routes = Router::new()
         .route("/tracks/:id", get(stream_track))
+        .route("/random", get(random_track))
         .route("/prefetch", post(prefetch_tracks))
         .route("/user", get(get_user_info))
         .layer(middleware::from_fn_with_state(state.clone(), require_auth));
