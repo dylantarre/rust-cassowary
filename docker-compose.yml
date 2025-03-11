@@ -1,1 +1,25 @@
- 
+services:
+  music-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3500:3500"
+    volumes:
+      - ./music:/app/music:ro  # Read-only mount of music files
+      - ./.env:/app/.env:ro    # Read-only mount of environment file
+    environment:
+      - RUST_LOG=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3500/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - music-net
+
+networks:
+  music-net:
+    driver: bridge 
