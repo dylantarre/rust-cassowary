@@ -6,7 +6,7 @@ use axum::{
 use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
 use serde::{Deserialize, Serialize};
 
-// Supabase JWT claims structure
+// Simplified Supabase JWT claims structure with only essential fields
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
     pub sub: String,
@@ -22,9 +22,9 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
-// Authentication middleware for Supabase JWT verification
+// Simplified authentication function that accepts both JWT tokens and API keys
 pub async fn verify_supabase_token(headers: &HeaderMap, jwt_secret: &str) -> Result<Claims, StatusCode> {
-    // First try the Authorization header with Bearer token
+    // Check for Authorization header (Bearer token)
     if let Some(auth_header) = headers.get("Authorization") {
         if let Ok(auth_value) = auth_header.to_str() {
             if auth_value.starts_with("Bearer ") {
@@ -34,22 +34,16 @@ pub async fn verify_supabase_token(headers: &HeaderMap, jwt_secret: &str) -> Res
         }
     }
     
-    // If no valid Authorization header, try the apikey header
-    // This is used by the music-cli as an alternative authentication method
+    // Check for apikey header (for CLI compatibility)
     if let Some(api_key) = headers.get("apikey") {
         if let Ok(key_value) = api_key.to_str() {
-            // For apikey header, we need to verify it's the correct Supabase anon key
-            // For simplicity, we'll create a dummy claims object with a fixed user ID
-            // In a production environment, you would validate this key against your Supabase project
-            
-            // Check if the provided key is valid (this is a simplified check)
             if !key_value.is_empty() {
-                // Create a dummy claims object for the anon key authentication
+                // Create a simplified anonymous user for API key authentication
                 return Ok(Claims {
                     sub: "anon-user".to_string(),
                     email: None,
                     role: Some("anon".to_string()),
-                    exp: usize::MAX, // Never expires for simplicity
+                    exp: usize::MAX,
                     aud: None,
                     iss: None,
                 });
@@ -57,41 +51,33 @@ pub async fn verify_supabase_token(headers: &HeaderMap, jwt_secret: &str) -> Res
         }
     }
     
-    // If no valid authentication method found
+    // No valid authentication found
     Err(StatusCode::UNAUTHORIZED)
 }
 
-// Helper function to decode and validate JWT token
+// Simplified JWT token validation
 fn decode_and_validate_token(token: &str, jwt_secret: &str) -> Result<Claims, StatusCode> {
     let key = DecodingKey::from_secret(jwt_secret.as_bytes());
     
-    // Configure validation for Supabase JWTs
+    // Basic validation for Supabase JWTs
     let mut validation = Validation::new(Algorithm::HS256);
     validation.validate_exp = true;
-    validation.required_spec_claims.clear(); // Don't require specific claims
+    validation.required_spec_claims.clear();
 
-    let token_data = decode::<Claims>(token, &key, &validation)
-        .map_err(|e| {
-            eprintln!("JWT decode error: {:?}", e);
-            StatusCode::UNAUTHORIZED
-        })?;
-
-    Ok(token_data.claims)
+    decode::<Claims>(token, &key, &validation)
+        .map(|token_data| token_data.claims)
+        .map_err(|_| StatusCode::UNAUTHORIZED)
 }
 
-// Helper function to create error responses
+// Helper function for error responses
 pub fn error_response(status: StatusCode, message: &str) -> Response {
-    let body = Json(ErrorResponse {
-        error: message.to_string(),
-    });
-    
-    (status, body).into_response()
+    (status, Json(ErrorResponse { error: message.to_string() })).into_response()
 }
 
-// Function to extract user ID from claims
+// Extract user ID from claims
 pub fn extract_user_id(claims: &Claims) -> String {
     claims.sub.clone()
 }
 
-// Create a middleware module
+// Include middleware module
 pub mod middleware;

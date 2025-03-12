@@ -12,6 +12,7 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
+use tracing;
 
 // Re-export the auth module
 pub mod auth;
@@ -34,7 +35,10 @@ pub async fn health_check() -> impl IntoResponse {
 pub async fn random_track(
     State(state): State<AppState>,
     headers: HeaderMap,
-) -> Result<impl IntoResponse, StatusCode> {
+) -> impl IntoResponse {
+    // Log the incoming request
+    tracing::info!("Received request to /random endpoint");
+    
     // Try to authenticate with Supabase JWT or anon key
     // We'll allow this endpoint to work even without authentication
     let _ = verify_supabase_token(&headers, &state.supabase_jwt_secret).await;
@@ -42,33 +46,51 @@ pub async fn random_track(
     // Get all MP3 files from the music directory
     let mut track_ids = Vec::new();
     
+    // Log the music directory path we're searching
+    tracing::info!("Searching for MP3 files in: {:?}", &*state.music_dir);
+    
     if let Ok(entries) = std::fs::read_dir(&*state.music_dir) {
         for entry in entries.filter_map(Result::ok) {
             if let Some(file_name) = entry.file_name().to_str() {
+                tracing::debug!("Found file: {}", file_name);
                 if file_name.ends_with(".mp3") {
                     // Remove the .mp3 extension to get the track ID
                     if let Some(track_id) = file_name.strip_suffix(".mp3") {
                         track_ids.push(track_id.to_string());
+                        tracing::debug!("Added track ID: {}", track_id);
                     }
                 }
             }
         }
+    } else {
+        // Log an error if we can't read the directory
+        tracing::error!("Failed to read music directory: {:?}", &*state.music_dir);
     }
+    
+    // Log the number of tracks found
+    tracing::info!("Found {} MP3 tracks", track_ids.len());
     
     // Choose a random track
     let mut rng = rand::thread_rng();
     if let Some(track_id) = track_ids.choose(&mut rng) {
         // Instead of using a redirect, return a JSON response with the track ID
         // This is more compatible with the music-cli
-        let json_response = Json(serde_json::json!({
+        tracing::info!("Selected random track: {}", track_id);
+        
+        let response = (StatusCode::OK, Json(serde_json::json!({
             "track_id": track_id
-        }));
+        })));
         
-        println!("Selected random track: {}", track_id);
-        
-        Ok(json_response)
+        tracing::info!("Returning 200 OK response with track_id: {}", track_id);
+        response
     } else {
-        Err(StatusCode::NOT_FOUND)
+        tracing::error!("No tracks found in music directory");
+        let response = (StatusCode::NOT_FOUND, Json(serde_json::json!({
+            "error": "No tracks found"
+        })));
+        
+        tracing::info!("Returning 404 Not Found response");
+        response
     }
 }
 
@@ -147,7 +169,7 @@ pub async fn prefetch_tracks(
 }
 
 // Get user info
-pub async fn get_user_info(
+pub async fn user_info(
     headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, StatusCode> {
@@ -170,29 +192,48 @@ pub fn create_app(
 ) -> Router {
     // Create the app state
     let state = AppState {
-        music_dir,
-        supabase_jwt_secret,
+        music_dir: music_dir.clone(),
+        supabase_jwt_secret: supabase_jwt_secret.clone(),
         track_ids: Vec::new(),
     };
+
+    // Scan the music directory to populate track_ids
+    let music_dir_path = music_dir.as_ref();
+    tracing::info!("Scanning music directory: {:?}", music_dir_path);
     
-    // Set up CORS
-    let cors = CorsLayer::new()
-        .allow_origin(tower_http::cors::Any)
-        .allow_methods(tower_http::cors::Any)
-        .allow_headers(tower_http::cors::Any);
+    if let Ok(entries) = std::fs::read_dir(music_dir_path) {
+        let mut track_count = 0;
+        for entry in entries.filter_map(Result::ok) {
+            if let Some(file_name) = entry.file_name().to_str() {
+                if file_name.ends_with(".mp3") {
+                    track_count += 1;
+                    tracing::debug!("Found track: {}", file_name);
+                }
+            }
+        }
+        tracing::info!("Found {} tracks in music directory", track_count);
+    } else {
+        tracing::error!("Failed to read music directory: {:?}", music_dir_path);
+    }
+
+    // Create a CORS layer that allows requests from any origin
+    let cors = CorsLayer::very_permissive();
 
     // Create a router for public routes (no authentication required)
     let public_routes = Router::new()
         .route("/health", get(health_check))
         .route("/random", get(random_track));
-
+        
     // Create a router for protected routes (authentication required)
     let protected_routes = Router::new()
         .route("/tracks/:id", get(stream_track))
         .route("/prefetch", post(prefetch_tracks))
-        .route("/user", get(get_user_info))
-        .layer(middleware::from_fn_with_state(state.clone(), require_auth));
-
+        .route("/me", get(user_info))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_auth,
+        ));
+    
     // Combine the routes and add the state
     Router::new()
         .merge(public_routes)

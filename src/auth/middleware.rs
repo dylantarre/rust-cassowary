@@ -9,26 +9,27 @@ use axum::{
 use super::{verify_supabase_token, error_response};
 use crate::AppState;
 
-// Middleware to enforce authentication on protected routes
+// Simplified authentication middleware
 pub async fn require_auth(
     State(state): State<AppState>,
     req: Request<Body>,
     next: Next,
 ) -> Result<Response, Response> {
+    // Extract headers from the request
     let headers = req.headers();
     
+    // Attempt to verify authentication
     match verify_supabase_token(headers, &state.supabase_jwt_secret).await {
         Ok(claims) => {
-            // Store user claims in request extensions for later use
+            // Store claims in request extensions and continue
             let mut req = req;
             req.extensions_mut().insert(claims);
-            
-            // Continue to the handler
             Ok(next.run(req).await)
         },
-        Err(status) => {
+        Err(_) => {
+            // Return a simple error response
             Err(error_response(
-                status,
+                axum::http::StatusCode::UNAUTHORIZED,
                 "Authentication required",
             ))
         }

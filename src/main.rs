@@ -20,7 +20,6 @@ use tokio::{
 };
 use tokio_util::io::ReaderStream;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use rand::seq::SliceRandom;
 use regex::Regex;
 
 // Import our auth module
@@ -28,7 +27,7 @@ mod auth;
 use auth::{verify_supabase_token};
 
 // Import from our library
-use rusty_cassowary::create_app;
+use rusty_cassowary::{create_app, AppState as LibAppState};
 
 #[derive(Clone)]
 struct AppState {
@@ -48,44 +47,6 @@ const CHUNK_SIZE: usize = 8192; // 8KB chunks
 // Health check endpoint
 async fn health_check() -> impl IntoResponse {
     StatusCode::OK
-}
-
-// Get a random track
-async fn random_track(
-    State(state): State<AppState>,
-) -> impl IntoResponse {
-    use std::fs;
-    
-    // Get all MP3 files in the music directory
-    let mut track_ids = Vec::new();
-    
-    if let Ok(entries) = fs::read_dir(&*state.music_dir) {
-        for entry in entries.filter_map(Result::ok) {
-            if let Some(file_name) = entry.file_name().to_str() {
-                if file_name.ends_with(".mp3") {
-                    // Remove the .mp3 extension
-                    let track_id = file_name.trim_end_matches(".mp3").to_string();
-                    track_ids.push(track_id);
-                }
-            }
-        }
-    }
-    
-    // Select a random track
-    let mut rng = rand::thread_rng();
-    if let Some(track_id) = track_ids.choose(&mut rng) {
-        // Instead of using a redirect, return a JSON response with the track ID
-        // This is more compatible with the music-cli
-        println!("Selected random track: {}", track_id);
-        
-        Json(serde_json::json!({
-            "track_id": track_id
-        }))
-    } else {
-        Json(serde_json::json!({
-            "error": "No tracks found"
-        }))
-    }
 }
 
 // Stream a track by ID
@@ -228,10 +189,10 @@ async fn user_info(
 
 #[tokio::main]
 async fn main() {
-    // Initialize tracing
+    // Initialize tracing with more detailed logging
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| "info".into()))
+            .unwrap_or_else(|_| "rusty_cassowary=debug,info".into()))
         .with(tracing_subscriber::fmt::layer())
         .init();
     
@@ -252,6 +213,10 @@ async fn main() {
         .parse::<u16>()
         .expect("PORT must be a valid number");
     
+    // Log important configuration
+    tracing::info!("Music directory: {}", music_dir);
+    tracing::info!("JWT secret length: {}", supabase_jwt_secret.len());
+    
     // Create the app with the given configuration
     let app = create_app(
         Arc::new(PathBuf::from(music_dir)),
@@ -269,7 +234,7 @@ async fn main() {
         
     // Run the server with axum
     if let Err(e) = axum::serve(listener, app).await {
-        eprintln!("Server error: {}", e);
+        tracing::error!("Server error: {}", e);
     }
 }
 
