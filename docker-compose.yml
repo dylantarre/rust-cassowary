@@ -6,7 +6,7 @@ services:
     ports:
       - "3500:3500"
     volumes:
-      - ./music:/app/music:ro  # Read-only mount of music files
+      - ./music:/music:ro  # Read-only mount of music files
     environment:
       - RUST_LOG=info
       - PORT=3500

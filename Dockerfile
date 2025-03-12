@@ -29,9 +29,9 @@ COPY --from=builder /usr/src/app/target/release/rusty-cassowary /app/
 # COPY --from=builder /usr/src/app/.env /app/
 
 # Create music directory
-RUN mkdir -p /app/music
+RUN mkdir -p /music
 
-ENV MUSIC_DIR=/app/music
+ENV MUSIC_DIR=/music
 ENV PORT=3500
 ENV RUST_LOG=info
 EXPOSE 3500
