@@ -1,6 +1,13 @@
-FROM rust:1.76 as builder
+FROM rust:1.81 as builder
 
 WORKDIR /usr/src/app
+
+# Install ALSA development packages in the builder stage
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libasound2-dev \
+    libpulse-dev
+
 COPY . .
 
 RUN cargo build --release
