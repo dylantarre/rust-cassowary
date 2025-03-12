@@ -6,7 +6,7 @@ services:
     ports:
       - "3500:3500"
     volumes:
-      - ./music:/music:ro  # Read-only mount of music files
+      - music-data:/music:ro  # Use a named volume instead of a relative path
     environment:
       - RUST_LOG=info
       - PORT=3500
@@ -19,8 +19,11 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - music-net
+      - music-network
 
 networks:
-  music-net:
+  music-network:
     driver: bridge
+
+volumes:
+  music-data:  # Define the named volume

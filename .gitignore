@@ -4,3 +4,4 @@
 Cargo.lock
 /music/
 .DS_Store
+target/

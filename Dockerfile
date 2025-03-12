@@ -28,8 +28,9 @@ COPY --from=builder /usr/src/app/target/release/rusty-cassowary /app/
 # Instead of copying the .env file, we'll use environment variables
 # COPY --from=builder /usr/src/app/.env /app/
 
-# Create music directory
+# Create music directory and copy music files from the repository
 RUN mkdir -p /music
+COPY --from=builder /usr/src/app/music/* /music/
 
 ENV MUSIC_DIR=/music
 ENV PORT=3500
