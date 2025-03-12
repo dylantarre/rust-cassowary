@@ -1,38 +1,34 @@
 use axum::{
-    extract::{Path, State},
-    http::{header, HeaderMap, HeaderValue, StatusCode, Uri},
-    response::{IntoResponse, Response, Redirect},
-    routing::{get, post},
-    Router,
-    Json,
-    middleware,
+    extract::{Path as AxumPath, State, Json},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
 };
 use dotenv::dotenv;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
-    io::{Read},
-    net::SocketAddr,
-    path::{PathBuf},
-    sync::Arc,
+    io::Read,
+    path::PathBuf,
     collections::VecDeque,
+    env,
+    sync::Arc,
+    net::SocketAddr,
 };
 use tokio::{
     io::AsyncReadExt,
     sync::Mutex,
-    net::TcpListener,
 };
 use tokio_util::io::ReaderStream;
-use tower_http::cors::CorsLayer;
-use tracing::{info, Level};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use rand::seq::SliceRandom;
+use regex::Regex;
 
 // Import our auth module
 mod auth;
-use auth::{verify_supabase_token, Claims};
-use auth::middleware::require_auth;
+use auth::{verify_supabase_token};
 
-const CHUNK_SIZE: usize = 1024 * 32; // 32KB chunks
+// Import from our library
+use rusty_cassowary::create_app;
 
 #[derive(Clone)]
 struct AppState {
@@ -46,79 +42,96 @@ struct PrefetchRequest {
     track_ids: Vec<String>,
 }
 
-// Get a random track and redirect to it
+// Constant for the chunk size used in prefetching
+const CHUNK_SIZE: usize = 8192; // 8KB chunks
+
+// Health check endpoint
+async fn health_check() -> impl IntoResponse {
+    StatusCode::OK
+}
+
+// Get a random track
 async fn random_track(
     State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<impl IntoResponse, StatusCode> {
-    // Get user claims from the request extensions (set by middleware)
-    let _claims = verify_supabase_token(&headers, &state.supabase_jwt_secret).await?;
+) -> impl IntoResponse {
+    use std::fs;
     
-    // Get all MP3 files from the music directory
+    // Get all MP3 files in the music directory
     let mut track_ids = Vec::new();
     
-    if let Ok(entries) = std::fs::read_dir(&*state.music_dir) {
+    if let Ok(entries) = fs::read_dir(&*state.music_dir) {
         for entry in entries.filter_map(Result::ok) {
             if let Some(file_name) = entry.file_name().to_str() {
                 if file_name.ends_with(".mp3") {
-                    // Remove the .mp3 extension to get the track ID
-                    if let Some(track_id) = file_name.strip_suffix(".mp3") {
-                        track_ids.push(track_id.to_string());
-                    }
+                    // Remove the .mp3 extension
+                    let track_id = file_name.trim_end_matches(".mp3").to_string();
+                    track_ids.push(track_id);
                 }
             }
         }
     }
     
-    // Choose a random track
+    // Select a random track
     let mut rng = rand::thread_rng();
     if let Some(track_id) = track_ids.choose(&mut rng) {
-        // Return a 302 redirect to the track
-        Ok(Redirect::to(&format!("/tracks/{}", track_id)))
+        // Instead of using a redirect, return a JSON response with the track ID
+        // This is more compatible with the music-cli
+        println!("Selected random track: {}", track_id);
+        
+        Json(serde_json::json!({
+            "track_id": track_id
+        }))
     } else {
-        Err(StatusCode::NOT_FOUND)
+        Json(serde_json::json!({
+            "error": "No tracks found"
+        }))
     }
 }
 
+// Stream a track by ID
 async fn stream_track(
-    Path(track_id): Path<String>,
+    AxumPath(track_id): AxumPath<String>,
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Response, StatusCode> {
-    // Get user claims from the request extensions (set by middleware)
-    let _claims = verify_supabase_token(&headers, &state.supabase_jwt_secret).await?;
-    
     let file_path = state.music_dir.join(format!("{}.mp3", track_id));
     
     if !file_path.exists() {
         return Err(StatusCode::NOT_FOUND);
     }
 
-    let file = tokio::fs::File::open(&file_path)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Verify authentication
+    verify_supabase_token(&headers, &state.supabase_jwt_secret).await?;
     
-    let file_size = file
-        .metadata()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .len();
-
-    // Parse Range header
+    // Open the file
+    let file = match tokio::fs::File::open(&file_path).await {
+        Ok(file) => file,
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    };
+    
+    // Get the file size
+    let metadata = match file.metadata().await {
+        Ok(metadata) => metadata,
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    };
+    
+    let file_size = metadata.len();
+    
+    // Check if the client requested a range
     let range = headers
         .get(header::RANGE)
         .and_then(|value| value.to_str().ok())
         .and_then(|s| {
-            let caps = s.strip_prefix("bytes=")?;
-            let mut parts = caps.split('-');
-            let start = parts.next()?.parse::<u64>().ok()?;
-            let end = parts
-                .next()
-                .and_then(|s| s.parse::<u64>().ok())
+            let caps = Regex::new(r"bytes=(\d+)-(\d+)?")
+                .unwrap()
+                .captures(s)?;
+            let start = caps.get(1)?.as_str().parse::<u64>().ok()?;
+            let end = caps.get(2)
+                .and_then(|m| m.as_str().parse::<u64>().ok())
                 .unwrap_or(file_size - 1);
             Some((start, end))
         });
-
+    
     match range {
         Some((start, end)) => {
             // Create a limited reader for the range
@@ -126,21 +139,27 @@ async fn stream_track(
             
             let body = axum::body::Body::from_stream(stream);
             let mut response = Response::new(body);
-            response.headers_mut().insert(
-                header::CONTENT_RANGE,
-                HeaderValue::from_str(&format!("bytes {}-{}/{}", start, end, file_size))
-                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
-            );
+            
+            // Set the content type
             response.headers_mut().insert(
                 header::CONTENT_TYPE,
                 HeaderValue::from_static("audio/mpeg"),
             );
+            
+            // Set the content range header
             response.headers_mut().insert(
-                header::ACCEPT_RANGES,
-                HeaderValue::from_static("bytes"),
+                header::CONTENT_RANGE,
+                HeaderValue::from_str(&format!("bytes {}-{}/{}", start, end, file_size)).unwrap(),
             );
-            *response.status_mut() = StatusCode::PARTIAL_CONTENT;
-
+            
+            // Set the content length header
+            response.headers_mut().insert(
+                header::CONTENT_LENGTH,
+                HeaderValue::from_str(&format!("{}", end - start + 1)).unwrap(),
+            );
+            
+            response.status_mut().clone_from(&StatusCode::PARTIAL_CONTENT);
+            
             Ok(response)
         }
         None => {
@@ -149,50 +168,45 @@ async fn stream_track(
             
             let body = axum::body::Body::from_stream(stream);
             let mut response = Response::new(body);
+            
+            // Set the content type
             response.headers_mut().insert(
                 header::CONTENT_TYPE,
                 HeaderValue::from_static("audio/mpeg"),
             );
+            
+            // Set the content length header
             response.headers_mut().insert(
                 header::CONTENT_LENGTH,
-                HeaderValue::from_str(&file_size.to_string())
-                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+                HeaderValue::from_str(&format!("{}", file_size)).unwrap(),
             );
-            response.headers_mut().insert(
-                header::ACCEPT_RANGES,
-                HeaderValue::from_static("bytes"),
-            );
-
+            
             Ok(response)
         }
     }
 }
 
+// Prefetch tracks
 async fn prefetch_tracks(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(request): Json<PrefetchRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    // Get user claims from the request extensions (set by middleware)
-    let _claims = verify_supabase_token(&headers, &state.supabase_jwt_secret).await?;
+    // Verify authentication
+    verify_supabase_token(&headers, &state.supabase_jwt_secret).await?;
     
-    // Add tracks to prefetch queue
-    let mut queue = state.prefetch_queue.lock().await;
+    // Add the track IDs to the prefetch queue
     for track_id in request.track_ids {
-        queue.push_back(track_id);
+        state.prefetch_queue.lock().await.push_back(track_id);
     }
-
+    
     Ok(StatusCode::OK)
 }
 
-async fn health_check() -> impl IntoResponse {
-    StatusCode::OK
-}
-
-// New endpoint to get user info from the token
-async fn get_user_info(
-    headers: HeaderMap,
+// Get user info
+async fn user_info(
     State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, StatusCode> {
     let claims = verify_supabase_token(&headers, &state.supabase_jwt_secret).await?;
     
@@ -200,13 +214,13 @@ async fn get_user_info(
     struct UserInfo {
         id: String,
         email: Option<String>,
-        role: Option<String>,
+        role: String,
     }
     
     let user_info = UserInfo {
         id: claims.sub,
         email: claims.email,
-        role: claims.role,
+        role: claims.role.unwrap_or_else(|| "authenticated".to_string()),
     };
     
     Ok(Json(user_info))
@@ -214,69 +228,55 @@ async fn get_user_info(
 
 #[tokio::main]
 async fn main() {
+    // Initialize tracing
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| "info".into()))
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+    
+    // Load environment variables from .env file
     dotenv().ok();
     
-    // Initialize tracing
-    tracing_subscriber::fmt()
-        .with_max_level(Level::INFO)
-        .init();
-
-    let music_dir = Arc::new(PathBuf::from(
-        std::env::var("MUSIC_DIR").unwrap_or_else(|_| "./music".to_string())
-    ));
+    // Get the music directory from the environment
+    let music_dir = env::var("MUSIC_DIR")
+        .expect("MUSIC_DIR must be set");
     
-    let supabase_jwt_secret = Arc::new(
-        std::env::var("SUPABASE_JWT_SECRET").expect("SUPABASE_JWT_SECRET must be set"),
+    // Get the Supabase JWT secret from the environment
+    let supabase_jwt_secret = env::var("SUPABASE_JWT_SECRET")
+        .expect("SUPABASE_JWT_SECRET must be set");
+    
+    // Get the port from the environment or use the default
+    let port = env::var("PORT")
+        .unwrap_or_else(|_| "3500".to_string())
+        .parse::<u16>()
+        .expect("PORT must be a valid number");
+    
+    // Create the app with the given configuration
+    let app = create_app(
+        Arc::new(PathBuf::from(music_dir)),
+        Arc::new(supabase_jwt_secret),
     );
-
-    let state = AppState {
-        music_dir,
-        supabase_jwt_secret,
-        prefetch_queue: Arc::new(Mutex::new(VecDeque::new())),
-    };
-
-    let cors = CorsLayer::new()
-        .allow_origin(tower_http::cors::Any)
-        .allow_methods(tower_http::cors::Any)
-        .allow_headers(tower_http::cors::Any);
-
-    // Create a router for public routes
-    let public_routes = Router::new()
-        .route("/health", get(health_check));
-
-    // Create a router for protected routes
-    let protected_routes = Router::new()
-        .route("/tracks/:id", get(stream_track))
-        .route("/random", get(random_track))
-        .route("/prefetch", post(prefetch_tracks))
-        .route("/user", get(get_user_info))
-        .layer(middleware::from_fn_with_state(state.clone(), require_auth));
-
-    // Combine the routers
-    let app = Router::new()
-        .merge(public_routes)
-        .merge(protected_routes)
-        .layer(cors)
-        .with_state(state.clone());
-
-    // Start the prefetch worker
-    tokio::spawn(prefetch_worker(state));
-
-    let port = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse::<u16>().ok())
-        .unwrap_or(3000);
-        
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    info!("Music streaming server listening on {}", addr);
     
-    let listener = TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    // Start the server
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    tracing::info!("Music streaming server listening on {}", addr);
+    
+    // Use tokio::net::TcpListener for binding
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .expect("Failed to bind server");
+        
+    // Run the server with axum
+    if let Err(e) = axum::serve(listener, app).await {
+        eprintln!("Server error: {}", e);
+    }
 }
 
-async fn prefetch_worker(state: AppState) {
+// Background task to prefetch tracks
+async fn prefetch_task(state: AppState) {
     loop {
-        // Check the prefetch queue
+        // Get the next track ID from the queue
         let track_id = {
             let mut queue = state.prefetch_queue.lock().await;
             queue.pop_front()
@@ -291,13 +291,13 @@ async fn prefetch_worker(state: AppState) {
                     let mut buffer = [0; CHUNK_SIZE];
                     while let Ok(n) = file.read(&mut buffer) {
                         if n == 0 { break; }
-                        // Just reading is enough to cache
                     }
+                    tracing::info!("Prefetched track: {}", track_id);
                 }
             }
         }
-
-        // Sleep briefly to prevent busy-waiting
+        
+        // Wait a bit before checking the queue again
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 }

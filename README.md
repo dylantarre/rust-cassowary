@@ -38,6 +38,32 @@ Authorization: Bearer <your-jwt-token>
 
 ## Deployment Instructions
 
+### GitHub Deployment
+
+To deploy this project to GitHub:
+
+1. Create a new repository on GitHub
+2. Initialize git in your local project (if not already done):
+   ```bash
+   git init
+   ```
+3. Add your files to git:
+   ```bash
+   git add .
+   ```
+4. Commit your changes:
+   ```bash
+   git commit -m "Initial commit of rusty-cassowary music server"
+   ```
+5. Add your GitHub repository as a remote:
+   ```bash
+   git remote add origin https://github.com/yourusername/rusty-cassowary.git
+   ```
+6. Push your code to GitHub:
+   ```bash
+   git push -u origin main
+   ```
+
 ### Portainer Deployment
 
 When deploying to Portainer, follow these steps to avoid common issues:

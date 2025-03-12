@@ -1,12 +1,12 @@
 use axum::{
     body::Body,
     extract::State,
-    http::{Request, StatusCode},
+    http::Request,
     middleware::Next,
     response::Response,
 };
 
-use super::{verify_supabase_token, error_response, Claims};
+use super::{verify_supabase_token, error_response};
 use crate::AppState;
 
 // Middleware to enforce authentication on protected routes
